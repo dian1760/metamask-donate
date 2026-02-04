@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Route, Switch, useHistory, useParams } from 'react-router-dom';
-import { ORIGIN_METAMASK } from '../../../../shared/constants/app';
+import {
+  ENVIRONMENT_TYPE_NOTIFICATION,
+  ORIGIN_METAMASK,
+  TRACE_ENABLED_SIGN_METHODS,
+} from '../../../../shared/constants/app';
 import Loading from '../../../components/ui/loading-screen';
 import {
   clearConfirmTransaction,
@@ -9,6 +13,7 @@ import {
 } from '../../../ducks/confirm-transaction/confirm-transaction.duck';
 import { getMostRecentOverviewPage } from '../../../ducks/history/history';
 import { getSendTo } from '../../../ducks/send';
+import { getSelectedNetworkClientId } from '../../../../shared/modules/selectors/networks';
 import {
   CONFIRM_DEPLOY_CONTRACT_PATH,
   CONFIRM_SEND_ETHER_PATH,
@@ -23,12 +28,12 @@ import { isTokenMethodAction } from '../../../helpers/utils/transactions.util';
 import usePolling from '../../../hooks/usePolling';
 import { usePrevious } from '../../../hooks/usePrevious';
 import {
-  getSelectedNetworkClientId,
   unconfirmedTransactionsHashSelector,
   unconfirmedTransactionsListSelector,
   use4ByteResolutionSelector,
 } from '../../../selectors';
 import {
+  endBackgroundTrace,
   gasFeeStartPollingByNetworkClientId,
   gasFeeStopPollingByPollingToken,
   getContractMethodData,
@@ -43,6 +48,11 @@ import ConfirmSignatureRequest from '../confirm-signature-request';
 import ConfirmTransactionSwitch from '../confirm-transaction-switch';
 import Confirm from '../confirm/confirm';
 import useCurrentConfirmation from '../hooks/useCurrentConfirmation';
+// TODO: Remove restricted import
+// eslint-disable-next-line import/no-restricted-paths
+import { getEnvironmentType } from '../../../../app/scripts/lib/util';
+import { useAsyncResult } from '../../../hooks/useAsyncResult';
+import { TraceName } from '../../../../shared/lib/trace';
 import ConfirmTokenTransactionSwitch from './confirm-token-transaction-switch';
 
 const ConfirmTransaction = () => {
@@ -88,6 +98,24 @@ const ConfirmTransaction = () => {
   ]);
 
   const { id, type } = transaction;
+
+  const isNotification = getEnvironmentType() === ENVIRONMENT_TYPE_NOTIFICATION;
+
+  useAsyncResult(async () => {
+    if (!isNotification) {
+      return undefined;
+    }
+
+    const traceId = TRACE_ENABLED_SIGN_METHODS.includes(type)
+      ? transaction.msgParams?.requestId?.toString()
+      : id;
+
+    return await endBackgroundTrace({
+      name: TraceName.NotificationDisplay,
+      id: traceId,
+    });
+  }, [id, isNotification, type, transaction.msgParams]);
+
   const transactionId = id;
   const isValidTokenMethod = isTokenMethodAction(type);
   const isValidTransactionId =
@@ -98,15 +126,14 @@ const ConfirmTransaction = () => {
   const prevTransactionId = usePrevious(transactionId);
 
   usePolling({
-    startPollingByNetworkClientId: gasFeeStartPollingByNetworkClientId,
+    startPolling: (input) =>
+      gasFeeStartPollingByNetworkClientId(input.networkClientId),
     stopPollingByPollingToken: gasFeeStopPollingByPollingToken,
-    networkClientId: transaction.networkClientId ?? networkClientId,
+    input: { networkClientId: transaction.networkClientId ?? networkClientId },
   });
 
   useEffect(() => {
-    if (!totalUnapproved && !sendTo) {
-      history.replace(mostRecentOverviewPage);
-    } else {
+    if (totalUnapproved || sendTo) {
       const { txParams: { data } = {}, origin } = transaction;
 
       if (origin !== ORIGIN_METAMASK) {

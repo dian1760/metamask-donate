@@ -1,9 +1,8 @@
-import { useEffect, useCallback, useContext } from 'react';
+import { useCallback, useContext, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import { setBridgeFeatureFlags } from '../../ducks/bridge/actions';
 import {
-  getCurrentChainId,
   ///: BEGIN:ONLY_INCLUDE_IF(build-main,build-beta,build-flask)
   getCurrentKeyring,
   getDataCollectionForMarketing,
@@ -29,8 +28,8 @@ import {
 ///: BEGIN:ONLY_INCLUDE_IF(build-main,build-beta,build-flask)
 import { isHardwareKeyring } from '../../helpers/utils/hardware';
 import { getPortfolioUrl } from '../../helpers/utils/portfolio';
-import { setSwapsFromToken } from '../../ducks/swaps/swaps';
 import { SwapsTokenObject } from '../../../shared/constants/swaps';
+import { getProviderConfig } from '../../../shared/modules/selectors/networks';
 ///: END:ONLY_INCLUDE_IF
 
 const useBridging = () => {
@@ -41,8 +40,9 @@ const useBridging = () => {
   const metaMetricsId = useSelector(getMetaMetricsId);
   const isMetaMetricsEnabled = useSelector(getParticipateInMetaMetrics);
   const isMarketingEnabled = useSelector(getDataCollectionForMarketing);
-  const chainId = useSelector(getCurrentChainId);
+  const providerConfig = useSelector(getProviderConfig);
   const keyring = useSelector(getCurrentKeyring);
+  // @ts-expect-error keyring type is wrong maybe?
   const usingHardwareWallet = isHardwareKeyring(keyring.type);
 
   const isBridgeSupported = useSelector(getIsBridgeEnabled);
@@ -58,9 +58,10 @@ const useBridging = () => {
       token: SwapsTokenObject | SwapsEthToken,
       portfolioUrlSuffix?: string,
     ) => {
-      if (!isBridgeChain) {
+      if (!isBridgeChain || !providerConfig) {
         return;
       }
+
       if (isBridgeSupported) {
         trackEvent({
           event: MetaMetricsEventName.BridgeLinkClicked,
@@ -69,12 +70,9 @@ const useBridging = () => {
             token_symbol: token.symbol,
             location,
             text: 'Bridge',
-            chain_id: chainId,
+            chain_id: providerConfig.chainId,
           },
         });
-        dispatch(
-          setSwapsFromToken({ ...token, address: token.address.toLowerCase() }),
-        );
         if (usingHardwareWallet && global.platform.openExtensionInBrowser) {
           global.platform.openExtensionInBrowser(
             PREPARE_SWAP_ROUTE,
@@ -82,7 +80,9 @@ const useBridging = () => {
             false,
           );
         } else {
-          history.push(CROSS_CHAIN_SWAP_ROUTE + PREPARE_SWAP_ROUTE);
+          history.push(
+            `${CROSS_CHAIN_SWAP_ROUTE}${PREPARE_SWAP_ROUTE}?token=${token.address.toLowerCase()}`,
+          );
         }
       } else {
         const portfolioUrl = getPortfolioUrl(
@@ -104,7 +104,7 @@ const useBridging = () => {
             location,
             text: 'Bridge',
             url: portfolioUrl,
-            chain_id: chainId,
+            chain_id: providerConfig.chainId,
             token_symbol: token.symbol,
           },
         });
@@ -113,8 +113,6 @@ const useBridging = () => {
     [
       isBridgeSupported,
       isBridgeChain,
-      chainId,
-      setSwapsFromToken,
       dispatch,
       usingHardwareWallet,
       history,
@@ -122,6 +120,7 @@ const useBridging = () => {
       trackEvent,
       isMetaMetricsEnabled,
       isMarketingEnabled,
+      providerConfig,
     ],
   );
 

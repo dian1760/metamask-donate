@@ -3,6 +3,10 @@ export const CaveatTypes = Object.freeze({
   restrictNetworkSwitching: 'restrictNetworkSwitching' as const,
 });
 
+export const EndowmentTypes = Object.freeze({
+  permittedChains: 'endowment:permitted-chains',
+});
+
 export const RestrictedEthMethods = Object.freeze({
   eth_accounts: 'eth_accounts',
 });
@@ -17,6 +21,7 @@ export const RestrictedMethods = Object.freeze({
   snap_getBip44Entropy: 'snap_getBip44Entropy',
   snap_getEntropy: 'snap_getEntropy',
   snap_getLocale: 'snap_getLocale',
+  snap_getPreferences: 'snap_getPreferences',
   wallet_snap: 'wallet_snap',
   ///: BEGIN:ONLY_INCLUDE_IF(keyring-snaps)
   snap_manageAccounts: 'snap_manageAccounts',

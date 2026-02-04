@@ -1,7 +1,14 @@
 import { toChecksumAddress } from 'ethereumjs-util';
 import { EthAccountType } from '@metamask/keyring-api';
+import { Hex } from '@metamask/utils';
 import { toHex } from '@metamask/controller-utils';
 import { ETH_EOA_METHODS } from '../../../shared/constants/eth-methods';
+import { mockNetworkState } from '../../../test/stub/networks';
+import {
+  CHAIN_IDS,
+  CURRENCY_SYMBOLS,
+  NETWORK_TO_NAME_MAP,
+} from '../../../shared/constants/network';
 import {
   getConfiguredCustodians,
   getCustodianIconForAddress,
@@ -16,6 +23,7 @@ import {
   getMMIConfiguration,
   getInteractiveReplacementToken,
   getCustodianDeepLink,
+  getNoteToTraderMessage,
   getIsNoteToTraderSupported,
   MmiConfiguration,
   State,
@@ -67,9 +75,16 @@ const custodianMock = {
 function buildState(overrides = {}) {
   const defaultState = {
     metamask: {
-      providerConfig: {
-        type: 'test',
-        chainId: toHex(1),
+      selectedNetworkClientId: '0x1',
+      networkConfigurationsByChainId: {
+        [CHAIN_IDS.MAINNET]: {
+          chainId: CHAIN_IDS.MAINNET,
+          blockExplorerUrls: [],
+          defaultRpcEndpointIndex: 0,
+          name: NETWORK_TO_NAME_MAP[CHAIN_IDS.MAINNET],
+          nativeCurrency: CURRENCY_SYMBOLS.ETH,
+          rpcEndpoints: [],
+        },
       },
       internalAccounts: {
         selectedAccount: 'cf8dace4-9439-4bd4-b3a8-88c821c8fcb3',
@@ -253,9 +268,7 @@ describe('Institutional selectors', () => {
               supportedChains: ['1', '2', '3'],
             },
           },
-          providerConfig: {
-            chainId: toHex(1),
-          },
+          ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
         },
       });
 
@@ -294,9 +307,7 @@ describe('Institutional selectors', () => {
               supportedChains: ['4'],
             },
           },
-          providerConfig: {
-            chainId: toHex(1),
-          },
+          ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
         },
       });
 
@@ -338,9 +349,7 @@ describe('Institutional selectors', () => {
             },
             selectedAccount: 'cf8dace4-9439-4bd4-b3a8-88c821c8fcb3',
           },
-          providerConfig: {
-            chainId: toHex(1),
-          },
+          ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
         },
       });
 
@@ -353,6 +362,7 @@ describe('Institutional selectors', () => {
       const accountAddress = '0x1';
       const state = buildState({
         metamask: {
+          ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
           internalAccounts: {
             selectedAccount: 'cf8dace4-9439-4bd4-b3a8-88c821c8fcb3',
             accounts: {
@@ -373,48 +383,12 @@ describe('Institutional selectors', () => {
           },
           keyrings: [],
           custodianSupportedChains: {},
-          providerConfig: {},
-        },
-      });
-
-      expect(() => getIsCustodianSupportedChain(state)).toThrow(
-        'Invalid state',
-      );
-    });
-
-    it('throws an error if providerConfig is null', () => {
-      const accountAddress = '0x1';
-      const state = buildState({
-        metamask: {
-          internalAccounts: {
-            selectedAccount: 'cf8dace4-9439-4bd4-b3a8-88c821c8fcb3',
-            accounts: {
-              'cf8dace4-9439-4bd4-b3a8-88c821c8fcb3': {
-                id: 'cf8dace4-9439-4bd4-b3a8-88c821c8fcb3',
-                metadata: {
-                  name: 'Custody Account A',
-                  keyring: {
-                    type: 'Custody',
-                  },
-                },
-                options: {},
-                methods: ETH_EOA_METHODS,
-                type: EthAccountType.Eoa,
-                code: '0x',
-                balance: '0x47c9d71831c76efe',
-                nonce: '0x1b',
-                address: accountAddress,
-              },
+          networkConfigurationsByChainId: {
+            [toHex(1)]: {
+              chainId: toHex(1),
+              rpcEndpoints: [{}],
             },
           },
-          keyrings: [
-            {
-              type: 'Custody',
-              accounts: [accountAddress],
-            },
-          ],
-          custodianSupportedChains: {},
-          providerConfig: null,
         },
       });
 
@@ -457,9 +431,7 @@ describe('Institutional selectors', () => {
           custodianSupportedChains: {
             [accountAddress]: null,
           },
-          providerConfig: {
-            chainId: toHex(1),
-          },
+          ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
         },
       });
 
@@ -504,9 +476,7 @@ describe('Institutional selectors', () => {
               supportedChains: [],
             },
           },
-          providerConfig: {
-            chainId: toHex(1),
-          },
+          ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
         },
       });
 
@@ -551,9 +521,7 @@ describe('Institutional selectors', () => {
               supportedChains: ['1'],
             },
           },
-          providerConfig: {
-            chainId: 1,
-          },
+          ...mockNetworkState({ chainId: 1 as unknown as Hex }),
         },
       });
 
@@ -598,9 +566,7 @@ describe('Institutional selectors', () => {
               supportedChains: ['1'],
             },
           },
-          providerConfig: {
-            chainId: 'not a hex number',
-          },
+          ...mockNetworkState({ chainId: 'not a hex number' as Hex }),
         },
       });
 
@@ -896,6 +862,31 @@ describe('Institutional selectors', () => {
       const isSupported = getIsNoteToTraderSupported(state, '0x1');
 
       expect(isSupported).toBe(false);
+    });
+  });
+
+  describe('getNoteToTraderMessage', () => {
+    it('returns noteToTraderMessage if it exists', () => {
+      const noteToTraderMessage = 'some message';
+      const state = {
+        metamask: {
+          noteToTraderMessage,
+        },
+      };
+
+      const token = getNoteToTraderMessage(state);
+
+      expect(token).toStrictEqual(noteToTraderMessage);
+    });
+
+    it('returns an empty string if noteToTraderMessage does not exist', () => {
+      const state = {
+        metamask: {},
+      };
+
+      const token = getNoteToTraderMessage(state);
+
+      expect(token).toStrictEqual('');
     });
   });
 });

@@ -12,13 +12,16 @@ import {
 import txHelper from '../helpers/utils/tx-helper';
 import { SmartTransactionStatus } from '../../shared/constants/transaction';
 import { hexToDecimal } from '../../shared/modules/conversion.utils';
-import { getProviderConfig } from '../ducks/metamask/metamask';
-import { getCurrentChainId, getSelectedInternalAccount } from './selectors';
-import { hasPendingApprovals, getApprovalRequestsByType } from './approvals';
+import {
+  getProviderConfig,
+  getCurrentChainId,
+} from '../../shared/modules/selectors/networks';
 import {
   createDeepEqualSelector,
   filterAndShapeUnapprovedTransactions,
-} from './util';
+} from '../../shared/modules/selectors/util';
+import { getSelectedInternalAccount } from './accounts';
+import { hasPendingApprovals, getApprovalRequestsByType } from './approvals';
 
 const INVALID_INITIAL_TRANSACTION_TYPES = [
   TransactionType.cancel,
@@ -45,7 +48,7 @@ export const getTransactions = createDeepEqualSelector(
       return [];
     }
 
-    return transactions.sort((a, b) => a.time - b.time); // Ascending
+    return [...transactions].sort((a, b) => a.time - b.time); // Ascending
   },
   (transactions) => transactions,
 );
@@ -84,7 +87,10 @@ export const getAllUnapprovedTransactions = createDeepEqualSelector(
       return [];
     }
 
-    const sortedTransactions = transactions.sort((a, b) => a.time - b.time);
+    const sortedTransactions = [...transactions].sort(
+      (a, b) => a.time - b.time,
+    );
+
     return filterAndShapeUnapprovedTransactions(sortedTransactions);
   },
   (transactions) => transactions,
@@ -220,7 +226,7 @@ export const transactionsSelector = createSelector(
   (subSelectorTxList = [], selectedAddressTxList = []) => {
     const txsToRender = selectedAddressTxList.concat(subSelectorTxList);
 
-    return txsToRender.sort((a, b) => b.time - a.time);
+    return [...txsToRender].sort((a, b) => b.time - a.time);
   },
 );
 

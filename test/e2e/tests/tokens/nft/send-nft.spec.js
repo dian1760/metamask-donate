@@ -4,6 +4,7 @@ const {
   logInWithBalanceValidation,
   unlockWallet,
   withFixtures,
+  tempToggleSettingRedesignedTransactionConfirmations,
 } = require('../../../helpers');
 const { SMART_CONTRACTS } = require('../../../seeder/smart-contracts');
 const FixtureBuilder = require('../../../fixture-builder');
@@ -24,13 +25,15 @@ describe('Send NFT', function () {
       async ({ driver }) => {
         await unlockWallet(driver);
 
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
         // Fill the send NFT form and confirm the transaction
         await driver.clickElement('[data-testid="account-overview__nfts-tab"]');
         await driver.clickElement('.nft-item__container');
         // TODO: Update Test when Multichain Send Flow is added
         await driver.clickElement({ text: 'Send', tag: 'button' });
         await driver.fill(
-          'input[placeholder="Enter public address (0x) or ENS name"]',
+          'input[placeholder="Enter public address (0x) or domain name"]',
           '0xc427D562164062a23a5cFf596A4a3208e72Acd28',
         );
         await driver.clickElement({
@@ -104,7 +107,7 @@ describe('Send NFT', function () {
 
         await driver.clickElement({ text: 'Send', tag: 'button' });
         await driver.fill(
-          'input[placeholder="Enter public address (0x) or ENS name"]',
+          'input[placeholder="Enter public address (0x) or domain name"]',
           '0xc427D562164062a23a5cFf596A4a3208e72Acd28',
         );
 
@@ -114,13 +117,6 @@ describe('Send NFT', function () {
           text: 'Continue',
           tag: 'button',
         });
-
-        // Ensure that this type of NFT is not editable for now
-        // https://github.com/MetaMask/metamask-extension/issues/24320
-        const editButtonPresent = await driver.isElementPresent(
-          '[data-testid="confirm-page-back-edit-button"]',
-        );
-        assert.equal(editButtonPresent, false);
 
         // Confirm the send
         await driver.clickElement({ text: 'Confirm', tag: 'button' });
@@ -171,7 +167,7 @@ describe('Send NFT', function () {
         await driver.clickElement({ text: 'Send', tag: 'button' });
 
         await driver.fill(
-          'input[placeholder="Enter public address (0x) or ENS name"]',
+          'input[placeholder="Enter public address (0x) or domain name"]',
           '0xc427D562164062a23a5cFf596A4a3208e72Acd28',
         );
 

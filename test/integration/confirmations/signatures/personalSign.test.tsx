@@ -1,15 +1,16 @@
-import { fireEvent, waitFor } from '@testing-library/react';
 import { ApprovalType } from '@metamask/controller-utils';
-import mockMetaMaskState from '../../data/integration-init-state.json';
-import { integrationTestRender } from '../../../lib/render-helpers';
-import { shortenAddress } from '../../../../ui/helpers/utils/util';
-import * as backgroundConnection from '../../../../ui/store/background-connection';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { CHAIN_IDS } from '@metamask/transaction-controller';
+import { MESSAGE_TYPE } from '../../../../shared/constants/app';
 import {
   MetaMetricsEventCategory,
-  MetaMetricsEventName,
   MetaMetricsEventLocation,
+  MetaMetricsEventName,
 } from '../../../../shared/constants/metametrics';
-import { MESSAGE_TYPE } from '../../../../shared/constants/app';
+import { shortenAddress } from '../../../../ui/helpers/utils/util';
+import * as backgroundConnection from '../../../../ui/store/background-connection';
+import { integrationTestRender } from '../../../lib/render-helpers';
+import mockMetaMaskState from '../../data/integration-init-state.json';
 
 jest.mock('../../../../ui/store/background-connection', () => ({
   ...jest.requireActual('../../../../ui/store/background-connection'),
@@ -34,6 +35,7 @@ const getMetaMaskStateWithUnapprovedPersonalSign = (accountAddress: string) => {
     unapprovedPersonalMsgs: {
       [pendingPersonalSignId]: {
         id: pendingPersonalSignId,
+        chainId: CHAIN_IDS.SEPOLIA,
         status: 'unapproved',
         time: pendingPersonalSignTime,
         type: MESSAGE_TYPE.PERSONAL_SIGN,
@@ -80,17 +82,20 @@ describe('PersonalSign Confirmation', () => {
       account.address,
     );
 
-    const { getByTestId, queryByTestId } = await integrationTestRender({
-      preloadedState: mockedMetaMaskState,
-      backgroundConnection: backgroundConnectionMocked,
-    });
+    const { findByTestId, getByTestId, queryByTestId } =
+      await integrationTestRender({
+        preloadedState: mockedMetaMaskState,
+        backgroundConnection: backgroundConnectionMocked,
+      });
 
-    expect(getByTestId('header-account-name')).toHaveTextContent(accountName);
-    expect(getByTestId('header-network-display-name')).toHaveTextContent(
-      'Chain 5',
+    expect(await findByTestId('header-account-name')).toHaveTextContent(
+      accountName,
+    );
+    expect(await findByTestId('header-network-display-name')).toHaveTextContent(
+      'Sepolia',
     );
 
-    fireEvent.click(getByTestId('header-info__account-details-button'));
+    fireEvent.click(await findByTestId('header-info__account-details-button'));
 
     await waitFor(() => {
       expect(
@@ -99,14 +104,14 @@ describe('PersonalSign Confirmation', () => {
     });
 
     expect(
-      getByTestId('confirmation-account-details-modal__account-name'),
+      await findByTestId('confirmation-account-details-modal__account-name'),
     ).toHaveTextContent(accountName);
-    expect(getByTestId('address-copy-button-text')).toHaveTextContent(
+    expect(await findByTestId('address-copy-button-text')).toHaveTextContent(
       '0x0DCD5...3E7bc',
     );
     expect(
-      getByTestId('confirmation-account-details-modal__account-balance'),
-    ).toHaveTextContent('1.58271596ETH');
+      await findByTestId('confirmation-account-details-modal__account-balance'),
+    ).toHaveTextContent('1.582717SepoliaETH');
 
     let confirmAccountDetailsModalMetricsEvent;
 
@@ -135,7 +140,7 @@ describe('PersonalSign Confirmation', () => {
     );
 
     fireEvent.click(
-      getByTestId('confirmation-account-details-modal__close-button'),
+      await findByTestId('confirmation-account-details-modal__close-button'),
     );
 
     await waitFor(() => {
@@ -156,16 +161,16 @@ describe('PersonalSign Confirmation', () => {
       account.address,
     );
 
-    const { getByText } = await integrationTestRender({
-      preloadedState: mockedMetaMaskState,
-      backgroundConnection: backgroundConnectionMocked,
+    await act(async () => {
+      await integrationTestRender({
+        preloadedState: mockedMetaMaskState,
+        backgroundConnection: backgroundConnectionMocked,
+      });
     });
 
-    expect(getByText('Signature request')).toBeInTheDocument();
+    expect(await screen.findByText('Signature request')).toBeInTheDocument();
     expect(
-      getByText(
-        'Only confirm this message if you approve the content and trust the requesting site.',
-      ),
+      await screen.findByText('Review request details before you confirm.'),
     ).toBeInTheDocument();
   });
 
@@ -184,7 +189,7 @@ describe('PersonalSign Confirmation', () => {
       account.address,
     );
 
-    const { getByText } = await integrationTestRender({
+    const { findByText } = await integrationTestRender({
       preloadedState: mockedMetaMaskState,
       backgroundConnection: backgroundConnectionMocked,
     });
@@ -195,6 +200,6 @@ describe('PersonalSign Confirmation', () => {
       account.address,
     )})`;
 
-    expect(getByText(mismatchAccountText)).toBeInTheDocument();
+    expect(await findByText(mismatchAccountText)).toBeInTheDocument();
   });
 });

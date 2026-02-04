@@ -26,6 +26,8 @@ import {
   TextColor,
   TextVariant,
 } from '../constants/design-system';
+// TODO: Remove restricted import
+// eslint-disable-next-line import/no-restricted-paths
 import { PermissionNames } from '../../../app/scripts/controllers/permissions';
 import { getURLHost } from './util';
 
@@ -250,6 +252,14 @@ export const PERMISSION_DESCRIPTIONS = deepFreeze({
     ]),
     leftIcon: IconName.Global,
     weight: PermissionWeight.snap_getLocale,
+  }),
+  [RestrictedMethods.snap_getPreferences]: ({ t, subjectName }) => ({
+    label: t('permission_getPreferences'),
+    description: t('permission_getPreferencesDescription', [
+      getSnapNameComponent(subjectName),
+    ]),
+    leftIcon: IconName.Customize,
+    weight: 4,
   }),
   [RestrictedMethods.wallet_snap]: ({ t, permissionValue, getSubjectName }) => {
     const snaps = permissionValue.caveats[0].value;
@@ -499,14 +509,12 @@ export const PERMISSION_DESCRIPTIONS = deepFreeze({
     weight: PermissionWeight.endowment_keyring,
   }),
   ///: END:ONLY_INCLUDE_IF
-  ///: BEGIN:ONLY_INCLUDE_IF(build-flask)
   [EndowmentPermissions['endowment:name-lookup']]: ({ t }) => ({
     label: t('permission_nameLookup'),
     description: t('permission_nameLookupDescription'),
     leftIcon: IconName.Search,
     weight: PermissionWeight.endowment_nameLookup,
   }),
-  ///: END:ONLY_INCLUDE_IF
   [EndowmentPermissions['endowment:signature-insight']]: ({
     t,
     permissionValue,

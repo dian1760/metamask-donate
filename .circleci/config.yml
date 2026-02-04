@@ -3,25 +3,25 @@ version: 2.1
 executors:
   node-browsers-small:
     docker:
-      - image: cimg/node:20.11-browsers
+      - image: cimg/node:20.18-browsers
     resource_class: small
     environment:
       NODE_OPTIONS: --max_old_space_size=2048
   node-browsers-medium:
     docker:
-      - image: cimg/node:20.11-browsers
+      - image: cimg/node:20.18-browsers
     resource_class: medium
     environment:
       NODE_OPTIONS: --max_old_space_size=3072
   node-linux-medium:
     machine:
-      image: ubuntu-2404:2024.05.1
+      image: ubuntu-2404:current
     resource_class: medium #// linux medium: 2 CPUs, 7.5 GB RAM, 10 credits/min
     environment:
       NODE_OPTIONS: --max_old_space_size=6144
   node-browsers-medium-plus:
     docker:
-      - image: cimg/node:20.11-browsers
+      - image: cimg/node:20.18-browsers
     resource_class: medium+
     environment:
       NODE_OPTIONS: --max_old_space_size=4096
@@ -53,16 +53,9 @@ develop_master_rc_only: &develop_master_rc_only
         - master
         - /^Version-v(\d+)[.](\d+)[.](\d+)/
 
-exclude_develop_master_rc: &exclude_develop_master_rc
-  filters:
-    branches:
-      ignore:
-        - develop
-        - master
-        - /^Version-v(\d+)[.](\d+)[.](\d+)/
 aliases:
   # Shallow Git Clone
-  - &shallow-git-clone
+  - &shallow-git-clone-and-enable-vnc
     name: Shallow Git Clone
     command: |
       #!/bin/bash
@@ -88,15 +81,21 @@ aliases:
         git checkout -B "$CIRCLE_BRANCH" "$CIRCLE_SHA1"
       fi
 
-  # Check if MMI Optional tests should run
-  - &check-mmi-optional
-    name: Check if MMI Optional tests should run
+      # Piggyback on this alias to enable VNC connections
+      # The if statement will only be true on node-browsers executors
+      if [ "${SHELL}" != "/bin/bash" ]; then
+        cat ${HOME}/project/.circleci/scripts/enable-vnc.sh >> ~/.bashrc
+      fi
+
+  # Check if MMI tests should run
+  - &check-mmi-trigger
+    name: Check if MMI tests should run
     command: |
-      RUN_MMI_OPTIONAL=$(cat ./RUN_MMI_OPTIONAL)
-      if [[ "${RUN_MMI_OPTIONAL}" == "true" ]]; then
-        echo "Running MMI Optional tests"
+      source mmi_trigger.env
+      if [ "${run_mmi_tests}" == "true" ]; then
+        echo "Running MMI tests"
       else
-        echo "Skipping MMI Optional tests"
+        echo "Skipping MMI tests"
         circleci step halt
       fi
 
@@ -104,9 +103,11 @@ workflows:
   test_and_release:
     when:
       not:
-        matches:
-          pattern: /^l10n_crowdin_action$/
-          value: << pipeline.git.branch >>
+        or:
+          - matches:
+              pattern: /^l10n_crowdin_action$/
+              value: << pipeline.git.branch >>
+          - equal: [rerun-from-failed, << pipeline.schedule.name >>]
     jobs:
       - create_release_pull_request:
           <<: *rc_branch_only
@@ -115,12 +116,13 @@ workflows:
       - trigger-beta-build:
           requires:
             - prep-deps
-      - check-pr-tag
+      - check-mmi-trigger
       - prep-deps
       - get-changed-files-with-git-diff:
-          <<: *exclude_develop_master_rc
-          requires:
-            - prep-deps
+          filters:
+            branches:
+              ignore:
+                - master
       - test-deps-audit:
           requires:
             - prep-deps
@@ -176,10 +178,11 @@ workflows:
       - prep-build-test-mmi:
           requires:
             - prep-deps
+            - check-mmi-trigger
       - prep-build-test-mmi-playwright:
           requires:
             - prep-deps
-            - check-pr-tag
+            - check-mmi-trigger
       - prep-build-storybook:
           requires:
             - prep-deps
@@ -197,6 +200,7 @@ workflows:
           requires:
             - prep-deps
       - test-e2e-chrome-webpack:
+          <<: *develop_master_rc_only
           requires:
             - prep-build-test-webpack
             - get-changed-files-with-git-diff
@@ -205,6 +209,7 @@ workflows:
             - prep-build-test
             - get-changed-files-with-git-diff
       - test-e2e-firefox:
+          <<: *develop_master_rc_only
           requires:
             - prep-build-test-mv2
             - get-changed-files-with-git-diff
@@ -231,9 +236,12 @@ workflows:
           requires:
             - prep-build-test-mmi
             - get-changed-files-with-git-diff
-      - test-e2e-mmi-playwright - OPTIONAL:
+      - test-e2e-mmi-playwright:
           requires:
             - prep-build-test-mmi-playwright
+      - test-e2e-swap-playwright - OPTIONAL:
+          requires:
+            - prep-build
       - test-e2e-chrome-rpc-mmi:
           requires:
             - prep-build-test-mmi
@@ -351,6 +359,18 @@ workflows:
           requires:
             - prep-build-ts-migration-dashboard
 
+  rerun-from-failed:
+    when:
+      equal: [rerun-from-failed, << pipeline.schedule.name >>]
+    jobs:
+      - prep-deps
+      - rerun-workflows-from-failed:
+          filters:
+            branches:
+              only: develop
+          requires:
+            - prep-deps
+
   locales_only:
     when:
       matches:
@@ -358,11 +378,10 @@ workflows:
         value: << pipeline.git.branch >>
     jobs:
       - prep-deps
-      - get-changed-files-with-git-diff:
-          requires:
-            - prep-deps
+      - get-changed-files-with-git-diff
       - validate-locales-only:
           requires:
+            - prep-deps
             - get-changed-files-with-git-diff
       - test-lint:
           requires:
@@ -376,7 +395,7 @@ jobs:
   trigger-beta-build:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -422,43 +441,10 @@ jobs:
           name: Create GitHub Pull Request for version
           command: .circleci/scripts/release-create-release-pr.sh
 
-  check-pr-tag:
-    docker:
-      - image: cimg/base:stable
-    steps:
-      - run:
-          name: Check for MMI Team Tag
-          command: |
-            #!/bin/bash
-
-            GH_LABEL=team-mmi
-            if [ -z "$CIRCLE_PULL_REQUESTS" ]; then
-              echo "Skipping tag check; this is not a PR."
-              echo "false" > ./RUN_MMI_OPTIONAL
-              exit 0
-            fi
-
-            echo $CIRCLE_PULL_REQUESTS | sed 's/,/\n/g'
-
-            # See if any associated PRs have matching label
-            HAS_MATCHING_PR=$(echo $CIRCLE_PULL_REQUESTS \
-              | sed -e 's#,#\n#g' -e 's#/github.com/#/api.github.com/repos/#g' -e 's#/pull/#/pulls/#g' \
-              | xargs -n1 curl -s \
-              | jq -s "map((.labels|map(select(.name==\"${GH_LABEL}\"))))|flatten|length > 0")
-
-            echo "${GH_LABEL} tag presence: ${HAS_MATCHING_PR}"
-
-            # assign the RUN_MMI_OPTIONAL variable
-            echo "${HAS_MATCHING_PR}" > ./RUN_MMI_OPTIONAL
-      - persist_to_workspace:
-          root: .
-          paths:
-            - RUN_MMI_OPTIONAL
-
   prep-deps:
     executor: node-browsers-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - run:
           name: Save Yarn version
@@ -478,7 +464,7 @@ jobs:
       - gh/install
       - run:
           name: Install dependencies
-          command: .circleci/scripts/install-dependencies.sh
+          command: yarn --immutable
       - save_cache:
           key: dependency-cache-{{ checksum "/tmp/YARN_VERSION" }}-{{ checksum "yarn.lock" }}
           paths:
@@ -495,7 +481,7 @@ jobs:
   get-changed-files-with-git-diff:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -510,7 +496,7 @@ jobs:
   validate-locales-only:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -519,7 +505,7 @@ jobs:
   validate-lavamoat-allow-scripts:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -533,7 +519,7 @@ jobs:
   validate-lavamoat-policy-build:
     executor: node-browsers-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -550,7 +536,7 @@ jobs:
       build-type:
         type: string
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -564,7 +550,7 @@ jobs:
   prep-build:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -601,7 +587,7 @@ jobs:
   prep-build-mv2:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -644,7 +630,7 @@ jobs:
   prep-build-mmi:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -688,7 +674,7 @@ jobs:
   prep-build-flask:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -729,7 +715,7 @@ jobs:
   prep-build-flask-mv2:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -770,7 +756,7 @@ jobs:
   prep-build-test-flask:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -792,7 +778,7 @@ jobs:
   prep-build-test-flask-mv2:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -814,10 +800,11 @@ jobs:
   prep-build-test-mmi:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
+      - run: *check-mmi-trigger
       - run:
           name: Build extension for testing
           command: yarn build:test:mmi
@@ -836,11 +823,11 @@ jobs:
   prep-build-test-mmi-playwright:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
-      - run: *check-mmi-optional
+      - run: *check-mmi-trigger
       - run:
           name: Build MMI extension for Playwright e2e
           command: |
@@ -855,7 +842,6 @@ jobs:
       - persist_to_workspace:
           root: .
           paths:
-            - RUN_MMI_OPTIONAL
             - dist-test-mmi-playwright
             - builds-test-mmi-playwright
       - store_artifacts:
@@ -865,7 +851,7 @@ jobs:
   prep-build-test:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -889,7 +875,7 @@ jobs:
   prep-build-test-mv2:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -913,7 +899,7 @@ jobs:
   prep-build-test-webpack:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - attach_workspace:
           at: .
       - run:
@@ -933,7 +919,7 @@ jobs:
   prep-build-storybook:
     executor: node-linux-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -948,7 +934,7 @@ jobs:
   prep-build-ts-migration-dashboard:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -960,10 +946,21 @@ jobs:
           paths:
             - development/ts-migration-dashboard/build/final
 
+  rerun-workflows-from-failed:
+    executor: node-browsers-small
+    steps:
+      - run: *shallow-git-clone-and-enable-vnc
+      - run: sudo corepack enable
+      - attach_workspace:
+          at: .
+      - run:
+          name: Rerun workflows from failed
+          command: yarn ci-rerun-from-failed
+
   test-yarn-dedupe:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -974,7 +971,7 @@ jobs:
   test-lint:
     executor: node-browsers-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -988,13 +985,13 @@ jobs:
   test-storybook:
     executor: node-browsers-medium-plus
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
       - run:
           name: Install Playwright browsers
-          command: yarn exec playwright install
+          command: yarn exec playwright install chromium
       - run:
           name: Test Storybook
           command: yarn test-storybook:ci
@@ -1009,9 +1006,9 @@ jobs:
           command: ./development/shellcheck.sh
 
   test-lint-lockfile:
-    executor: node-browsers-medium
+    executor: node-browsers-medium-plus
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1025,7 +1022,7 @@ jobs:
   test-lint-changelog:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1052,7 +1049,7 @@ jobs:
   test-deps-audit:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1063,7 +1060,7 @@ jobs:
   test-deps-depcheck:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1075,7 +1072,7 @@ jobs:
     executor: node-browsers-medium-plus
     parallelism: 20
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1095,7 +1092,7 @@ jobs:
   test-api-specs:
     executor: node-browsers-medium-plus
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1127,7 +1124,7 @@ jobs:
     executor: node-browsers-medium-plus
     parallelism: 20
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1151,7 +1148,7 @@ jobs:
     executor: node-browsers-medium
     parallelism: 1
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1175,7 +1172,7 @@ jobs:
     executor: node-browsers-small
     parallelism: 1
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1198,10 +1195,11 @@ jobs:
   test-e2e-chrome-rpc-mmi:
     executor: node-browsers-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
+      - run: *check-mmi-trigger
       - run:
           name: Move test build to dist
           command: mv ./dist-test-mmi ./dist
@@ -1221,13 +1219,13 @@ jobs:
   test-e2e-chrome-vault-decryption:
     executor: node-browsers-medium-plus
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
       - run:
           name: test:e2e:single
-          command: .circleci/scripts/test-run-e2e.sh yarn test:e2e:single test/e2e/vault-decryption-chrome.spec.js --browser chrome
+          command: .circleci/scripts/test-run-e2e.sh yarn test:e2e:single test/e2e/vault-decryption-chrome.spec.ts --browser chrome
           no_output_timeout: 5m
       - store_artifacts:
           path: test-artifacts
@@ -1239,7 +1237,7 @@ jobs:
     executor: node-browsers-medium-plus
     parallelism: 10
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1251,7 +1249,7 @@ jobs:
           command: mv ./builds-test-flask-mv2 ./builds
       - run:
           name: test:e2e:firefox:flask
-          command: ENABLE_MV3=false .circleci/scripts/test-run-e2e.sh yarn test:e2e:firefox:flask
+          command: .circleci/scripts/test-run-e2e.sh yarn test:e2e:firefox:flask
           no_output_timeout: 5m
       - store_artifacts:
           path: test-artifacts
@@ -1263,7 +1261,7 @@ jobs:
     executor: node-browsers-medium-plus
     parallelism: 8
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1287,10 +1285,11 @@ jobs:
     executor: node-browsers-medium-plus
     parallelism: 12
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
+      - run: *check-mmi-trigger
       - run:
           name: Move test build to dist
           command: mv ./dist-test-mmi ./dist
@@ -1307,15 +1306,15 @@ jobs:
       - store_test_results:
           path: test/test-results/e2e
 
-  test-e2e-mmi-playwright - OPTIONAL:
+  test-e2e-mmi-playwright:
     executor: playwright
     parallelism: 2
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
-      - run: *check-mmi-optional
+      - run: *check-mmi-trigger
       - run:
           name: Move test build to dist
           command: mv ./dist-test-mmi-playwright ./dist
@@ -1352,7 +1351,7 @@ jobs:
     executor: playwright
     parallelism: 2
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: corepack enable
       - attach_workspace:
           at: .
@@ -1382,7 +1381,7 @@ jobs:
     executor: node-browsers-medium-plus
     parallelism: 24
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1394,7 +1393,7 @@ jobs:
           command: mv ./builds-test-mv2 ./builds
       - run:
           name: test:e2e:firefox
-          command: ENABLE_MV3=false .circleci/scripts/test-run-e2e.sh yarn test:e2e:firefox
+          command: .circleci/scripts/test-run-e2e.sh yarn test:e2e:firefox
           no_output_timeout: 5m
       - store_artifacts:
           path: test-artifacts
@@ -1405,7 +1404,7 @@ jobs:
   benchmark:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1429,7 +1428,7 @@ jobs:
   user-actions-benchmark:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1453,7 +1452,7 @@ jobs:
   stats-module-load-init:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1557,7 +1556,7 @@ jobs:
   job-publish-release:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1565,8 +1564,14 @@ jobs:
           name: Publish main release to Sentry
           command: yarn sentry:publish
       - run:
+          name: Publish main MV2 release to Sentry
+          command: yarn sentry:publish --dist mv2
+      - run:
           name: Publish Flask release to Sentry
           command: yarn sentry:publish --build-type flask
+      - run:
+          name: Publish Flask MV2 release to Sentry
+          command: yarn sentry:publish --build-type flask --dist mv2
       - run:
           name: Publish MMI release to Sentry
           command: yarn sentry:publish --build-type mmi
@@ -1580,7 +1585,7 @@ jobs:
       - add_ssh_keys:
           fingerprints:
             - '3d:49:29:f4:b2:e8:ea:af:d1:32:eb:2a:fc:15:85:d8'
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1596,7 +1601,7 @@ jobs:
       - add_ssh_keys:
           fingerprints:
             - '8b:21:e3:20:7c:c9:db:82:74:2d:86:d6:11:a7:2f:49'
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1611,7 +1616,7 @@ jobs:
   validate-source-maps:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1622,7 +1627,7 @@ jobs:
   validate-source-maps-beta:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1633,7 +1638,7 @@ jobs:
   validate-source-maps-mmi:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1650,7 +1655,7 @@ jobs:
   validate-source-maps-flask:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1667,7 +1672,7 @@ jobs:
   validate-source-maps-flask-mv2:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1684,7 +1689,7 @@ jobs:
   validate-source-maps-mv2:
     executor: node-browsers-small
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1701,7 +1706,7 @@ jobs:
   test-mozilla-lint-mv2:
     executor: node-browsers-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1718,7 +1723,7 @@ jobs:
   test-mozilla-lint-flask-mv2:
     executor: node-browsers-medium
     steps:
-      - run: *shallow-git-clone
+      - run: *shallow-git-clone-and-enable-vnc
       - run: sudo corepack enable
       - attach_workspace:
           at: .
@@ -1738,3 +1743,18 @@ jobs:
       - run:
           name: All Tests Passed
           command: echo 'whew - everything passed!'
+
+  check-mmi-trigger:
+    executor: node-browsers-medium
+    steps:
+      - checkout
+      - run:
+          name: Check for MMI Team Label or Reviewer
+          command: ./.circleci/scripts/check_mmi_trigger.sh
+      - store_artifacts:
+          path: mmi_trigger.env
+          destination: mmi_trigger.env
+      - persist_to_workspace:
+          root: .
+          paths:
+            - mmi_trigger.env

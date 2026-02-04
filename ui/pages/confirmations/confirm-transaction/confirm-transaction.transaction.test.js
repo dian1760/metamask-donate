@@ -19,7 +19,7 @@ const middleware = [thunk];
 
 setBackgroundConnection({
   getGasFeeTimeEstimate: jest.fn(),
-  gasFeeStartPollingByNetworkClientId: jest.fn(),
+  gasFeeStartPolling: jest.fn(),
   gasFeeStopPollingByPollingToken: jest.fn(),
   promisifiedBackground: jest.fn(),
   tryReverseResolveAddress: jest.fn(),
@@ -27,6 +27,7 @@ setBackgroundConnection({
   addKnownMethodData: jest.fn(),
   addPollingTokenToAppState: jest.fn(),
   removePollingTokenFromAppState: jest.fn(),
+  getLastInteractedConfirmationInfo: jest.fn(),
 });
 
 describe('Confirm Transaction', () => {

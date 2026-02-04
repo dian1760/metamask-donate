@@ -8,6 +8,8 @@ const {
   editGasFeeForm,
   WINDOW_TITLES,
   clickNestedButton,
+  tempToggleSettingRedesignedTransactionConfirmations,
+  veryLargeDelayMs,
 } = require('../../helpers');
 const FixtureBuilder = require('../../fixture-builder');
 const { SMART_CONTRACTS } = require('../../seeder/smart-contracts');
@@ -28,6 +30,8 @@ describe('Transfer custom tokens @no-mmi', function () {
       async ({ driver }) => {
         await unlockWallet(driver);
 
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
         // go to custom tokens view on extension, perform send tokens
         await driver.clickElement({
           css: '[data-testid="multichain-token-list-item-value"]',
@@ -36,7 +40,7 @@ describe('Transfer custom tokens @no-mmi', function () {
         await driver.delay(500);
         await driver.clickElement('[data-testid="eth-overview-send"]');
         await driver.fill(
-          'input[placeholder="Enter public address (0x) or ENS name"]',
+          'input[placeholder="Enter public address (0x) or domain name"]',
           recipientAddress,
         );
         await driver.waitForSelector({
@@ -59,7 +63,7 @@ describe('Transfer custom tokens @no-mmi', function () {
           '.currency-display-component__text',
         );
         assert.notEqual(
-          await estimatedGasFee[0].getText(),
+          await estimatedGasFee[1].getText(),
           '0',
           'Estimated gas fee should not be 0',
         );
@@ -115,10 +119,15 @@ describe('Transfer custom tokens @no-mmi', function () {
         );
         await unlockWallet(driver);
 
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
         // transfer token from dapp
         await openDapp(driver, contractAddress);
+        await driver.delay(veryLargeDelayMs);
+
         await driver.clickElement({ text: 'Transfer Tokens', tag: 'button' });
-        await switchToNotificationWindow(driver);
+
+        await driver.switchToWindowWithTitle(WINDOW_TITLES.Dialog);
         await driver.waitForSelector({ text: '1.5 TST', tag: 'h1' });
 
         // edit gas fee
@@ -134,6 +143,12 @@ describe('Transfer custom tokens @no-mmi', function () {
         await driver.waitForSelector({
           css: '[data-testid="transaction-list-item-primary-currency"]',
           text: '-1.5 TST',
+        });
+
+        // this selector helps prevent flakiness. it allows driver to wait until send transfer is "confirmed"
+        await driver.waitForSelector({
+          text: 'Confirmed',
+          tag: 'div',
         });
 
         // check token amount is correct after transaction
@@ -168,8 +183,11 @@ describe('Transfer custom tokens @no-mmi', function () {
         );
         await unlockWallet(driver);
 
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
         // transfer token from dapp
         await openDapp(driver, contractAddress);
+        await driver.delay(veryLargeDelayMs);
         await driver.clickElement({
           text: 'Transfer Tokens Without Gas',
           tag: 'button',
@@ -190,6 +208,12 @@ describe('Transfer custom tokens @no-mmi', function () {
         await driver.waitForSelector({
           css: '[data-testid="activity-list-item-action"]',
           text: 'Send TST',
+        });
+
+        // this selector helps prevent flakiness. it allows driver to wait until send transfer is "confirmed"
+        await driver.waitForSelector({
+          text: 'Confirmed',
+          tag: 'div',
         });
 
         // check token amount is correct after transaction

@@ -47,9 +47,11 @@ import {
 import { MetaMetricsContext } from '../../../contexts/metametrics';
 import {
   isAccountConnectedToCurrentTab,
-  getShowFiatInTestnets,
   getUseBlockie,
-  getSelectedInternalAccount,
+  getShouldHideZeroBalanceTokens,
+  getIsTokenNetworkFilterEqualCurrentNetwork,
+  getShowFiatInTestnets,
+  getChainIdsToPoll,
 } from '../../../selectors';
 import {
   getMultichainIsTestnet,
@@ -64,16 +66,20 @@ import { ConnectedStatus } from '../connected-status/connected-status';
 import { getCustodianIconForAddress } from '../../../selectors/institutional/selectors';
 import { useTheme } from '../../../hooks/useTheme';
 ///: END:ONLY_INCLUDE_IF
+// TODO: Remove restricted import
+// eslint-disable-next-line import/no-restricted-paths
 import { normalizeSafeAddress } from '../../../../app/scripts/lib/multichain/address';
 import { useMultichainSelector } from '../../../hooks/useMultichainSelector';
+import { useGetFormattedTokensPerChain } from '../../../hooks/useGetFormattedTokensPerChain';
+import { useAccountTotalCrossChainFiatBalance } from '../../../hooks/useAccountTotalCrossChainFiatBalance';
 import { AccountListItemMenuTypes } from './account-list-item.types';
 
 const MAXIMUM_CURRENCY_DECIMALS = 3;
 const MAXIMUM_CHARACTERS_WITHOUT_TOOLTIP = 17;
 
-export const AccountListItem = ({
+const AccountListItem = ({
   account,
-  selected = false,
+  selected,
   onClick,
   closeMenu,
   accountsCount,
@@ -85,6 +91,8 @@ export const AccountListItem = ({
   isActive = false,
   startAccessory,
   onActionClick,
+  shouldScrollToWhenSelected = true,
+  privacyMode = false,
 }) => {
   const t = useI18nContext();
   const [accountOptionsMenuOpen, setAccountOptionsMenuOpen] = useState(false);
@@ -96,6 +104,7 @@ export const AccountListItem = ({
   const setAccountListItemMenuRef = (ref) => {
     setAccountListItemMenuElement(ref);
   };
+
   const isTestnet = useMultichainSelector(getMultichainIsTestnet, account);
   const isMainnet = !isTestnet;
   const shouldShowFiat = useMultichainSelector(
@@ -107,14 +116,39 @@ export const AccountListItem = ({
     shouldShowFiat && (isMainnet || (isTestnet && showFiatInTestnets));
   const accountTotalFiatBalances =
     useMultichainAccountTotalFiatBalance(account);
+  // cross chain agg balance
+  const shouldHideZeroBalanceTokens = useSelector(
+    getShouldHideZeroBalanceTokens,
+  );
+  const isTokenNetworkFilterEqualCurrentNetwork = useSelector(
+    getIsTokenNetworkFilterEqualCurrentNetwork,
+  );
+  const allChainIDs = useSelector(getChainIdsToPoll);
+  const { formattedTokensWithBalancesPerChain } = useGetFormattedTokensPerChain(
+    account,
+    shouldHideZeroBalanceTokens,
+    isTokenNetworkFilterEqualCurrentNetwork,
+    allChainIDs,
+  );
+  const { totalFiatBalance } = useAccountTotalCrossChainFiatBalance(
+    account,
+    formattedTokensWithBalancesPerChain,
+  );
+  // cross chain agg balance
   const mappedOrderedTokenList = accountTotalFiatBalances.orderedTokenList.map(
     (item) => ({
       avatarValue: item.iconUrl,
     }),
   );
-  const balanceToTranslate = isEvmNetwork
-    ? account.balance
-    : accountTotalFiatBalances.totalBalance;
+  let balanceToTranslate;
+  if (isEvmNetwork) {
+    balanceToTranslate =
+      !shouldShowFiat || isTestnet || !process.env.PORTFOLIO_VIEW
+        ? account.balance
+        : totalFiatBalance;
+  } else {
+    balanceToTranslate = accountTotalFiatBalances.totalBalance;
+  }
 
   ///: BEGIN:ONLY_INCLUDE_IF(build-mmi)
   const custodianIcon = useSelector((state) =>
@@ -127,10 +161,10 @@ export const AccountListItem = ({
   // scroll the item into view
   const itemRef = useRef(null);
   useEffect(() => {
-    if (selected) {
+    if (selected && shouldScrollToWhenSelected) {
       itemRef.current?.scrollIntoView?.();
     }
-  }, [itemRef, selected]);
+  }, [itemRef, selected, shouldScrollToWhenSelected]);
 
   const trackEvent = useContext(MetaMetricsContext);
   const primaryTokenImage = useMultichainSelector(
@@ -147,7 +181,6 @@ export const AccountListItem = ({
   const isConnected =
     currentTabOrigin && currentTabIsConnectedToSelectedAddress;
   const isSingleAccount = accountsCount === 1;
-  const selectedAccount = useSelector(getSelectedInternalAccount);
 
   return (
     <Box
@@ -257,6 +290,7 @@ export const AccountListItem = ({
                   name={IconName.Pin}
                   size={IconSize.Xs}
                   className="account-pinned-icon"
+                  data-testid="account-pinned-icon"
                 />
               ) : null}
               {isHidden ? (
@@ -310,7 +344,11 @@ export const AccountListItem = ({
                 value={balanceToTranslate}
                 type={PRIMARY}
                 showFiat={showFiat}
+                isAggregatedFiatOverviewBalance={
+                  !isTestnet && process.env.PORTFOLIO_VIEW && shouldShowFiat
+                }
                 data-testid="first-currency-display"
+                privacyMode={privacyMode}
               />
             </Text>
           </Box>
@@ -358,6 +396,7 @@ export const AccountListItem = ({
                   type={SECONDARY}
                   showNative
                   data-testid="second-currency-display"
+                  privacyMode={privacyMode}
                 />
               </Text>
             </Box>
@@ -419,10 +458,7 @@ export const AccountListItem = ({
           anchorElement={accountListItemMenuElement}
           account={account}
           onClose={() => setAccountOptionsMenuOpen(false)}
-          closeMenu={closeMenu}
-          disableAccountSwitcher={
-            isSingleAccount && selectedAccount.address === account.address
-          }
+          disableAccountSwitcher={isSingleAccount && selected}
           isOpen={accountOptionsMenuOpen}
           onActionClick={onActionClick}
           activeTabOrigin={currentTabOrigin}
@@ -459,7 +495,7 @@ AccountListItem.propTypes = {
   /**
    * Represents if this account is currently selected
    */
-  selected: PropTypes.bool,
+  selected: PropTypes.bool.isRequired,
   /**
    * Function to execute when the item is clicked
    */
@@ -504,6 +540,16 @@ AccountListItem.propTypes = {
    * Represents start accessory
    */
   startAccessory: PropTypes.node,
+  /**
+   * Determines if list item should be scrolled to when selected
+   */
+  shouldScrollToWhenSelected: PropTypes.bool,
+  /**
+   * Determines if list balance should be obfuscated
+   */
+  privacyMode: PropTypes.bool,
 };
 
 AccountListItem.displayName = 'AccountListItem';
+
+export default React.memo(AccountListItem);

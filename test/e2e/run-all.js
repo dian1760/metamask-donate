@@ -9,7 +9,7 @@ const { loadBuildTypesConfig } = require('../../development/lib/build-type');
 const { filterE2eChangedFiles } = require('./changedFilesUtil');
 
 // These tests should only be run on Flask for now.
-const FLASK_ONLY_TESTS = ['test-snap-namelookup.spec.js'];
+const FLASK_ONLY_TESTS = [];
 
 const getTestPathsForTestDir = async (testDir) => {
   const testFilenames = await fs.promises.readdir(testDir, {
@@ -32,7 +32,7 @@ const getTestPathsForTestDir = async (testDir) => {
 };
 
 // Quality Gate Retries
-const RETRIES_FOR_NEW_OR_CHANGED_TESTS = 5;
+const RETRIES_FOR_NEW_OR_CHANGED_TESTS = 4;
 
 /**
  * Runs the quality gate logic to filter and append changed or new tests if present.
@@ -41,7 +41,7 @@ const RETRIES_FOR_NEW_OR_CHANGED_TESTS = 5;
  * @param {string[]} changedOrNewTests - List of changed or new test paths.
  * @returns {string} The updated full test list.
  */
-async function applyQualityGate(fullTestList, changedOrNewTests) {
+function applyQualityGate(fullTestList, changedOrNewTests) {
   let qualityGatedList = fullTestList;
 
   if (changedOrNewTests.length > 0) {
@@ -63,11 +63,11 @@ async function applyQualityGate(fullTestList, changedOrNewTests) {
 }
 
 // For running E2Es in parallel in CI
-async function runningOnCircleCI(testPaths) {
-  const changedOrNewTests = await filterE2eChangedFiles();
+function runningOnCircleCI(testPaths) {
+  const changedOrNewTests = filterE2eChangedFiles();
   console.log('Changed or new test list:', changedOrNewTests);
 
-  const fullTestList = await applyQualityGate(
+  const fullTestList = applyQualityGate(
     testPaths.join('\n'),
     changedOrNewTests,
   );
@@ -248,7 +248,7 @@ async function main() {
   let changedOrNewTests;
   if (process.env.CIRCLECI) {
     ({ fullTestList: myTestList, changedOrNewTests = [] } =
-      await runningOnCircleCI(testPaths));
+      runningOnCircleCI(testPaths));
   } else {
     myTestList = testPaths;
   }

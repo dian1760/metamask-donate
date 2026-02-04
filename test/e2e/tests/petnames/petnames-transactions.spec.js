@@ -5,6 +5,7 @@ const {
   unlockWallet,
   defaultGanacheOptions,
   openActionMenuAndStartSendFlow,
+  tempToggleSettingRedesignedTransactionConfirmations,
 } = require('../../helpers');
 const FixtureBuilder = require('../../fixture-builder');
 const {
@@ -22,7 +23,7 @@ async function createDappSendTransaction(driver) {
 async function createWalletSendTransaction(driver, recipientAddress) {
   await openActionMenuAndStartSendFlow(driver);
   await driver.fill(
-    'input[placeholder="Enter public address (0x) or ENS name"]',
+    'input[placeholder="Enter public address (0x) or domain name"]',
     recipientAddress,
   );
 
@@ -49,6 +50,9 @@ describe('Petnames - Transactions', function () {
       },
       async ({ driver }) => {
         await unlockWallet(driver);
+
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
         await openDapp(driver);
         await createDappSendTransaction(driver);
         await switchToNotificationWindow(driver, 3);
@@ -94,6 +98,8 @@ describe('Petnames - Transactions', function () {
       },
       async ({ driver }) => {
         await unlockWallet(driver);
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
         await createWalletSendTransaction(driver, ADDRESS_MOCK);
         await expectName(driver, ABBREVIATED_ADDRESS_MOCK, false);
 

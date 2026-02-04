@@ -3,6 +3,8 @@ import { MetaMetricsSwapsEventSource } from '../../../shared/constants/metametri
 import { ETH_SWAPS_TOKEN_OBJECT } from '../../../shared/constants/swaps';
 import { renderHookWithProvider } from '../../../test/lib/render-helpers';
 import { BRIDGE_API_BASE_URL } from '../../../shared/constants/bridge';
+import { mockNetworkState } from '../../../test/stub/networks';
+import { CHAIN_IDS } from '../../../shared/constants/network';
 import useBridging from './useBridging';
 
 const mockHistoryPush = jest.fn();
@@ -13,9 +15,16 @@ jest.mock('react-router-dom', () => ({
   }),
 }));
 
+const mockDispatch = jest.fn().mockReturnValue(() => jest.fn());
 jest.mock('react-redux', () => ({
   ...jest.requireActual('react-redux'),
-  useDispatch: jest.fn().mockReturnValue(() => jest.fn()),
+  useDispatch: () => mockDispatch,
+}));
+
+const mockSetFromChain = jest.fn();
+jest.mock('../../ducks/bridge/actions', () => ({
+  ...jest.requireActual('../../ducks/bridge/actions'),
+  setFromChain: () => mockSetFromChain(),
 }));
 
 const MOCK_METAMETRICS_ID = '0xtestMetaMetricsId';
@@ -78,9 +87,7 @@ describe('useBridging', () => {
         const { result } = renderUseBridging({
           metamask: {
             useExternalServices: true,
-            providerConfig: {
-              chainId: '0x1',
-            },
+            ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
             metaMetricsId: MOCK_METAMETRICS_ID,
             bridgeState: {
               bridgeFeatureFlags: {
@@ -93,6 +100,8 @@ describe('useBridging', () => {
             },
           },
         });
+
+        expect(mockDispatch.mock.calls).toHaveLength(1);
 
         expect(nock(BRIDGE_API_BASE_URL).isDone()).toBe(true);
         result.current.openBridgeExperience(location, token, urlSuffix);
@@ -114,19 +123,19 @@ describe('useBridging', () => {
     // @ts-expect-error This is missing from the Mocha type definitions
     it.each([
       [
-        '/cross-chain/swaps/prepare-swap-page',
+        '/cross-chain/swaps/prepare-swap-page?token=0x0000000000000000000000000000000000000000',
         ETH_SWAPS_TOKEN_OBJECT,
         'Home',
         undefined,
       ],
       [
-        '/cross-chain/swaps/prepare-swap-page',
+        '/cross-chain/swaps/prepare-swap-page?token=0x0000000000000000000000000000000000000000',
         ETH_SWAPS_TOKEN_OBJECT,
         MetaMetricsSwapsEventSource.TokenView,
         '&token=native',
       ],
       [
-        '/cross-chain/swaps/prepare-swap-page',
+        '/cross-chain/swaps/prepare-swap-page?token=0x00232f2jksdauo',
         {
           iconUrl: 'https://icon.url',
           symbol: 'TEST',
@@ -149,9 +158,7 @@ describe('useBridging', () => {
         const { result } = renderUseBridging({
           metamask: {
             useExternalServices: true,
-            providerConfig: {
-              chainId: '0x1',
-            },
+            ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
             metaMetricsId: MOCK_METAMETRICS_ID,
             bridgeState: {
               bridgeFeatureFlags: {
@@ -167,6 +174,7 @@ describe('useBridging', () => {
 
         result.current.openBridgeExperience(location, token, urlSuffix);
 
+        expect(mockDispatch.mock.calls).toHaveLength(1);
         expect(mockHistoryPush.mock.calls).toHaveLength(1);
         expect(mockHistoryPush).toHaveBeenCalledWith(expectedUrl);
         expect(openTabSpy).not.toHaveBeenCalled();

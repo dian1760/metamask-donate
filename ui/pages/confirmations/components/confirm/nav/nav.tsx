@@ -1,8 +1,9 @@
-import { ethErrors, serializeError } from 'eth-rpc-errors';
+import { providerErrors, serializeError } from '@metamask/rpc-errors';
 import React, { useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 
+import { ApprovalType } from '@metamask/controller-utils';
 import { QueueType } from '../../../../../../shared/constants/metametrics';
 import {
   Box,
@@ -30,20 +31,18 @@ import {
   SIGNATURE_REQUEST_PATH,
 } from '../../../../../helpers/constants/routes';
 import { useI18nContext } from '../../../../../hooks/useI18nContext';
-import {
-  currentConfirmationSelector,
-  pendingConfirmationsSortedSelector,
-} from '../../../../../selectors';
+import { pendingConfirmationsSortedSelector } from '../../../../../selectors';
 import { rejectPendingApproval } from '../../../../../store/actions';
+import { useConfirmContext } from '../../../context/confirm';
 import { useQueuedConfirmationsEvent } from '../../../hooks/useQueuedConfirmationEvents';
-import { isSignatureApprovalRequest } from '../../../utils';
+import { isCorrectSignatureApprovalType } from '../../../../../../shared/lib/confirmation.utils';
 
 const Nav = () => {
   const history = useHistory();
   const t = useI18nContext();
   const dispatch = useDispatch();
 
-  const currentConfirmation = useSelector(currentConfirmationSelector);
+  const { currentConfirmation } = useConfirmContext();
 
   const pendingConfirmations = useSelector(pendingConfirmationsSortedSelector);
 
@@ -66,7 +65,7 @@ const Nav = () => {
       // "/confirm-transaction/<confirmation_id>"
       history.replace(
         `${CONFIRM_TRANSACTION_ROUTE}/${nextConfirmation.id}${
-          isSignatureApprovalRequest(nextConfirmation)
+          isCorrectSignatureApprovalType(nextConfirmation.type as ApprovalType)
             ? SIGNATURE_REQUEST_PATH
             : ''
         }`,
@@ -80,7 +79,7 @@ const Nav = () => {
       dispatch(
         rejectPendingApproval(
           conf.id,
-          serializeError(ethErrors.provider.userRejectedRequest()),
+          serializeError(providerErrors.userRejectedRequest()),
         ),
       );
     });

@@ -27,7 +27,8 @@ describe('Token List', function () {
   };
 
   const importToken = async (driver: Driver) => {
-    await driver.clickElement({ text: 'Import tokens', tag: 'button' });
+    await driver.clickElement(`[data-testid="import-token-button"]`);
+    await driver.clickElement(`[data-testid="importTokens"]`);
     await clickNestedButton(driver, 'Custom token');
     await driver.fill(
       '[data-testid="import-tokens-modal-custom-address"]',
@@ -97,7 +98,7 @@ describe('Token List', function () {
     );
   });
 
-  it.only('shows percentage increase for an ERC20 token with prices available', async function () {
+  it('shows percentage increase for an ERC20 token with prices available', async function () {
     const ethConversionInUsd = 10000;
 
     // Prices are in ETH

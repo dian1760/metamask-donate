@@ -10,9 +10,7 @@ import ConfirmSendEther from './confirm-send-ether';
 jest.mock('../components/simulation-details/useSimulationMetrics');
 
 setBackgroundConnection({
-  gasFeeStartPollingByNetworkClientId: jest
-    .fn()
-    .mockResolvedValue('pollingToken'),
+  gasFeeStartPolling: jest.fn().mockResolvedValue('pollingToken'),
   gasFeeStopPollingByPollingToken: jest.fn(),
   getNetworkConfigurationByNetworkClientId: jest.fn().mockImplementation(() =>
     Promise.resolve({
@@ -24,6 +22,7 @@ setBackgroundConnection({
   tryReverseResolveAddress: jest.fn(),
   getNextNonce: jest.fn(),
   addKnownMethodData: jest.fn(),
+  getLastInteractedConfirmationInfo: jest.fn(),
 });
 
 const sendEther = {

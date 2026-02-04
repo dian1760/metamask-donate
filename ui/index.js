@@ -1,3 +1,4 @@
+import { promisify } from 'util';
 import copyToClipboard from 'copy-to-clipboard';
 import log from 'loglevel';
 import { clone } from 'lodash';
@@ -5,14 +6,20 @@ import React from 'react';
 import { render } from 'react-dom';
 import browser from 'webextension-polyfill';
 
+// TODO: Remove restricted import
+// eslint-disable-next-line import/no-restricted-paths
 import { getEnvironmentType } from '../app/scripts/lib/util';
 import { AlertTypes } from '../shared/constants/alerts';
 import { maskObject } from '../shared/modules/object.utils';
-import { SENTRY_UI_STATE } from '../app/scripts/lib/setupSentry';
+// TODO: Remove restricted import
+// eslint-disable-next-line import/no-restricted-paths
+import { SENTRY_UI_STATE } from '../app/scripts/constants/sentry-state';
 import { ENVIRONMENT_TYPE_POPUP } from '../shared/constants/app';
 import { COPY_OPTIONS } from '../shared/constants/copy';
 import switchDirection from '../shared/lib/switch-direction';
 import { setupLocale } from '../shared/lib/error-utils';
+import { trace, TraceName } from '../shared/lib/trace';
+import { getCurrentChainId } from '../shared/modules/selectors/networks';
 import * as actions from './store/actions';
 import configureStore from './store/store';
 import {
@@ -32,6 +39,7 @@ import {
 import Root from './pages';
 import txHelper from './helpers/utils/tx-helper';
 import { setBackgroundConnection } from './store/background-connection';
+import { getStartupTraceTags } from './helpers/utils/tags';
 
 log.setLevel(global.METAMASK_DEBUG ? 'debug' : 'warn', false);
 
@@ -57,26 +65,23 @@ export const updateBackgroundConnection = (backgroundConnection) => {
   });
 };
 
-export default function launchMetamaskUi(opts, cb) {
-  const { backgroundConnection } = opts;
+export default async function launchMetamaskUi(opts) {
+  const { backgroundConnection, traceContext } = opts;
 
-  // check if we are unlocked first
-  backgroundConnection.getState(function (err, metamaskState) {
-    if (err) {
-      cb(
-        err,
-        {
-          ...metamaskState,
-        },
-        backgroundConnection,
-      );
-      return;
-    }
-    startApp(metamaskState, backgroundConnection, opts).then((store) => {
-      setupStateHooks(store);
-      cb(null, store);
-    });
-  });
+  const metamaskState = await trace(
+    { name: TraceName.GetState, parentContext: traceContext },
+    () => promisify(backgroundConnection.getState.bind(backgroundConnection))(),
+  );
+
+  const store = await startApp(metamaskState, backgroundConnection, opts);
+
+  await promisify(
+    backgroundConnection.startPatches.bind(backgroundConnection),
+  )();
+
+  setupStateHooks(store);
+
+  return store;
 }
 
 /**
@@ -161,7 +166,7 @@ export async function setupInitialStore(
     metamaskState.unapprovedEncryptionPublicKeyMsgs,
     metamaskState.unapprovedTypedMessages,
     metamaskState.networkId,
-    metamaskState.providerConfig.chainId,
+    getCurrentChainId({ metamask: metamaskState }),
   );
   const numberOfUnapprovedTx = unapprovedTxsAll.length;
   if (numberOfUnapprovedTx > 0) {
@@ -176,10 +181,18 @@ export async function setupInitialStore(
 }
 
 async function startApp(metamaskState, backgroundConnection, opts) {
-  const store = await setupInitialStore(
-    metamaskState,
-    backgroundConnection,
-    opts.activeTab,
+  const { traceContext } = opts;
+
+  const tags = getStartupTraceTags({ metamask: metamaskState });
+
+  const store = await trace(
+    {
+      name: TraceName.SetupStore,
+      parentContext: traceContext,
+      tags,
+    },
+    () =>
+      setupInitialStore(metamaskState, backgroundConnection, opts.activeTab),
   );
 
   // global metamask api - used by tooling
@@ -187,20 +200,32 @@ async function startApp(metamaskState, backgroundConnection, opts) {
     updateCurrentLocale: (code) => {
       store.dispatch(actions.updateCurrentLocale(code));
     },
-    setProviderType: (type) => {
-      store.dispatch(actions.setProviderType(type));
-    },
     setFeatureFlag: (key, value) => {
       store.dispatch(actions.setFeatureFlag(key, value));
     },
   };
 
+  await trace(
+    { name: TraceName.InitialActions, parentContext: traceContext },
+    () => runInitialActions(store),
+  );
+
+  trace({ name: TraceName.FirstRender, parentContext: traceContext }, () =>
+    render(<Root store={store} />, opts.container),
+  );
+
+  return store;
+}
+
+async function runInitialActions(store) {
+  const state = store.getState();
+
   // This block autoswitches chains based on the last chain used
   // for a given dapp, when there are no pending confimrations
   // This allows the user to be connected on one chain
   // for one dapp, and automatically change for another
-  const state = store.getState();
   const networkIdToSwitchTo = getNetworkToAutomaticallySwitchTo(state);
+
   if (networkIdToSwitchTo) {
     await store.dispatch(
       actions.automaticallySwitchNetwork(
@@ -226,11 +251,6 @@ async function startApp(metamaskState, backgroundConnection, opts) {
     global.metamask.id = thisPopupId;
     await store.dispatch(actions.setCurrentExtensionPopupId(thisPopupId));
   }
-
-  // start app
-  render(<Root store={store} />, opts.container);
-
-  return store;
 }
 
 /**
@@ -277,9 +297,6 @@ function setupStateHooks(store) {
     // for more info)
     state.version = global.platform.getVersion();
     state.browser = window.navigator.userAgent;
-    state.completeTxList = await actions.getTransactions({
-      filterToCurrentNetwork: false,
-    });
     return state;
   };
   window.stateHooks.getSentryAppState = function () {
@@ -298,12 +315,6 @@ function setupStateHooks(store) {
     return logsArray;
   };
 }
-
-// Check for local feature flags and represent them so they're avialable
-// to the front-end of the app
-window.metamaskFeatureFlags = {
-  networkMenuRedesign: Boolean(process.env.ENABLE_NETWORK_UI_REDESIGN),
-};
 
 window.logStateString = async function (cb) {
   const state = await window.stateHooks.getCleanAppState();

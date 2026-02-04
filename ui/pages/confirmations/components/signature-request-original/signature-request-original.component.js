@@ -2,7 +2,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
 import { ObjectInspector } from 'react-inspector';
-import { ethErrors, serializeError } from 'eth-rpc-errors';
+import { providerErrors, serializeError } from '@metamask/rpc-errors';
 import { SubjectType } from '@metamask/permission-controller';
 import LedgerInstructionField from '../ledger-instruction-field';
 import { MESSAGE_TYPE } from '../../../../../shared/constants/app';
@@ -50,6 +50,7 @@ import SignatureRequestHeader from '../signature-request-header';
 import SnapLegacyAuthorshipHeader from '../../../../components/app/snaps/snap-legacy-authorship-header';
 import InsightWarnings from '../../../../components/app/snaps/insight-warnings';
 import { BlockaidResultType } from '../../../../../shared/constants/security-provider';
+import { NetworkChangeToastLegacy } from '../confirm/network-change-toast';
 import { QueuedRequestsBannerAlert } from '../../confirmation/components/queued-requests-banner-alert';
 
 export default class SignatureRequestOriginal extends Component {
@@ -274,7 +275,7 @@ export default class SignatureRequestOriginal extends Component {
 
     await rejectPendingApproval(
       id,
-      serializeError(ethErrors.provider.userRejectedRequest()),
+      serializeError(providerErrors.userRejectedRequest()),
     );
     clearConfirmTransaction();
     history.push(mostRecentOverviewPage);
@@ -303,7 +304,7 @@ export default class SignatureRequestOriginal extends Component {
         onCancel={async () => {
           await rejectPendingApproval(
             txData.id,
-            serializeError(ethErrors.provider.userRejectedRequest()),
+            serializeError(providerErrors.userRejectedRequest()),
           );
           clearConfirmTransaction();
           history.push(mostRecentOverviewPage);
@@ -392,6 +393,7 @@ export default class SignatureRequestOriginal extends Component {
             {rejectNText}
           </ButtonLink>
         ) : null}
+        <NetworkChangeToastLegacy confirmation={txData} />
       </div>
     );
   };

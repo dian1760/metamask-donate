@@ -10,6 +10,7 @@ const {
   ACCOUNT_2,
   WINDOW_TITLES,
   clickNestedButton,
+  tempToggleSettingRedesignedTransactionConfirmations,
 } = require('../../helpers');
 const { SMART_CONTRACTS } = require('../../seeder/smart-contracts');
 
@@ -37,6 +38,8 @@ describe('Increase Token Allowance', function () {
         const additionalSpendingCap = '1';
 
         await unlockWallet(driver);
+
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
 
         const contractAddress = await contractRegistry.getContractAddress(
           smartContract,
@@ -104,7 +107,7 @@ describe('Increase Token Allowance', function () {
       tag: 'button',
       text: 'Next',
     });
-    driver.waitForSelector({
+    await driver.waitForSelector({
       css: '.box--display-flex > h6',
       text: `10 TST`,
     });
@@ -158,10 +161,7 @@ describe('Increase Token Allowance', function () {
     await transferFromRecipientInputEl.clear();
     await transferFromRecipientInputEl.fill(recipientAccount);
 
-    await driver.clickElement({
-      text: 'Transfer From Tokens',
-      tag: 'button',
-    });
+    await driver.clickElement('#transferFromTokens');
     await driver.delay(2000);
   }
 
@@ -275,6 +275,15 @@ describe('Increase Token Allowance', function () {
       css: '.box--display-flex > h6',
       text: `10 TST`,
     });
+    await driver.assertElementNotPresent(
+      {
+        tag: 'h6',
+        text: '0.000054 ETH',
+      },
+      {
+        waitAtLeastGuard: 2000,
+      },
+    );
     await driver.waitForSelector({
       tag: 'h6',
       text: '0.000062 ETH',
@@ -283,7 +292,7 @@ describe('Increase Token Allowance', function () {
       text: `${finalSpendingCap} TST`,
       css: '.mm-box > h6',
     });
-    await driver.clickElement({
+    await driver.clickElementAndWaitForWindowToClose({
       tag: 'button',
       text: 'Approve',
     });
@@ -296,6 +305,8 @@ describe('Increase Token Allowance', function () {
       css: '.transaction-list__completed-transactions .activity-list-item [data-testid="activity-list-item-action"]',
       text: 'Increase TST spending cap',
     });
+
+    await driver.delay(2000);
   }
 
   async function confirmTransferFromTokensSuccess(driver) {

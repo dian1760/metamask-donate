@@ -9,6 +9,7 @@ const {
   editGasFeeForm,
   WINDOW_TITLES,
   defaultGanacheOptions,
+  tempToggleSettingRedesignedTransactionConfirmations,
 } = require('../../helpers');
 const FixtureBuilder = require('../../fixture-builder');
 
@@ -27,7 +28,7 @@ describe('Send ETH', function () {
           await openActionMenuAndStartSendFlow(driver);
 
           await driver.fill(
-            'input[placeholder="Enter public address (0x) or ENS name"]',
+            'input[placeholder="Enter public address (0x) or domain name"]',
             '0x2f318C334780961FB129D2a6c30D0763d9a5C970',
           );
 
@@ -106,11 +107,13 @@ describe('Send ETH', function () {
         async ({ driver }) => {
           await unlockWallet(driver);
 
+          await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
           await driver.delay(1000);
 
           await openActionMenuAndStartSendFlow(driver);
           await driver.fill(
-            'input[placeholder="Enter public address (0x) or ENS name"]',
+            'input[placeholder="Enter public address (0x) or domain name"]',
             '0x2f318C334780961FB129D2a6c30D0763d9a5C970',
           );
 
@@ -172,7 +175,7 @@ describe('Send ETH', function () {
 
           await driver.clickElement('[data-testid="eth-overview-send"]');
           await driver.fill(
-            'input[placeholder="Enter public address (0x) or ENS name"]',
+            'input[placeholder="Enter public address (0x) or domain name"]',
             contractAddress,
           );
 
@@ -189,7 +192,9 @@ describe('Send ETH', function () {
           const balance = await driver.findElement(
             '[data-testid="eth-overview__primary-currency"]',
           );
+
           assert.ok(/^[\d.]+\sETH$/u.test(await balance.getText()));
+
           await driver.clickElement(
             '[data-testid="account-overview__activity-tab"]',
           );
@@ -254,6 +259,8 @@ describe('Send ETH', function () {
           async ({ driver }) => {
             await unlockWallet(driver);
 
+            await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
             // initiates a send from the dapp
             await openDapp(driver);
             await driver.clickElement({ text: 'Send', tag: 'button' });
@@ -303,7 +310,7 @@ describe('Send ETH', function () {
             });
 
             // the transaction has the expected gas price
-            driver.clickElement(
+            await driver.clickElement(
               '[data-testid="transaction-list-item-primary-currency"]',
             );
             await driver.waitForSelector({
@@ -329,6 +336,8 @@ describe('Send ETH', function () {
           },
           async ({ driver }) => {
             await unlockWallet(driver);
+
+            await tempToggleSettingRedesignedTransactionConfirmations(driver);
 
             // initiates a transaction from the dapp
             await openDapp(driver);
@@ -433,6 +442,8 @@ describe('Send ETH', function () {
           async ({ driver }) => {
             await unlockWallet(driver);
 
+            await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
             await driver.assertElementNotPresent('.loading-overlay__spinner');
             const balance = await driver.findElement(
               '[data-testid="eth-overview__primary-currency"]',
@@ -442,7 +453,7 @@ describe('Send ETH', function () {
             await openActionMenuAndStartSendFlow(driver);
 
             await driver.fill(
-              'input[placeholder="Enter public address (0x) or ENS name"]',
+              'input[placeholder="Enter public address (0x) or domain name"]',
               '0xc427D562164062a23a5cFf596A4a3208e72Acd28',
             );
 

@@ -6,11 +6,9 @@ import configureStore from '../../../../../store/store';
 import { renderWithProvider } from '../../../../../../test/jest';
 import { SECURITY_ROUTE } from '../../../../../helpers/constants/routes';
 import { setBackgroundConnection } from '../../../../../store/background-connection';
-import {
-  CHAIN_IDS,
-  NETWORK_TYPES,
-} from '../../../../../../shared/constants/network';
+import { CHAIN_IDS } from '../../../../../../shared/constants/network';
 import { ETH_EOA_METHODS } from '../../../../../../shared/constants/eth-methods';
+import { mockNetworkState } from '../../../../../../test/stub/networks';
 import NftsTab from '.';
 
 jest.mock('react-router-dom', () => ({
@@ -183,7 +181,8 @@ const render = ({
         [CHAIN_IDS.MAINNET]: {},
         [CHAIN_IDS.GOERLI]: {},
       },
-      providerConfig: { chainId, type: NETWORK_TYPES.MAINNET },
+      ...mockNetworkState({ chainId }),
+      currencyRates: {},
       accounts: {
         [selectedAddress]: {
           address: selectedAddress,
@@ -248,10 +247,6 @@ describe('NFT Items', () => {
     jest.resetAllMocks();
     jest.clearAllMocks();
   });
-
-  function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 
   describe('NFTs Detection Notice', () => {
     it('should render the NFTs Detection Notice when currently selected network is Mainnet and nft detection is set to false and user has nfts', () => {
@@ -373,26 +368,6 @@ describe('NFT Items', () => {
       fireEvent.click(screen.queryByText('Enable autodetect'));
       expect(historyPushMock).toHaveBeenCalledTimes(1);
       expect(historyPushMock).toHaveBeenCalledWith(SECURITY_ROUTE);
-    });
-  });
-
-  describe('NFT Tab Ramps Card', () => {
-    it('shows the ramp card when user balance is zero', async () => {
-      const { queryByText } = render({
-        selectedAddress: ACCOUNT_1,
-        balance: '0x0',
-      });
-      // wait for spinner to be removed
-      await delay(3000);
-      expect(queryByText('Get ETH to buy NFTs')).toBeInTheDocument();
-    });
-
-    it('does not show the ramp card when the account has a balance', () => {
-      const { queryByText } = render({
-        selectedAddress: ACCOUNT_1,
-        balance: ETH_BALANCE,
-      });
-      expect(queryByText('Get ETH to buy NFTs')).not.toBeInTheDocument();
     });
   });
 });

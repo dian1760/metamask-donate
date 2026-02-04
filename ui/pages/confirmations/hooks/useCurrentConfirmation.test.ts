@@ -8,10 +8,11 @@ import {
   TransactionStatus,
   TransactionType,
 } from '@metamask/transaction-controller';
-import { Hex, Json } from '@metamask/utils';
+import { Json } from '@metamask/utils';
 import { ApprovalType } from '@metamask/controller-utils';
 import { renderHookWithProvider } from '../../../../test/lib/render-helpers';
 import mockState from '../../../../test/data/mock-state.json';
+import { CHAIN_IDS } from '../../../../shared/constants/network';
 import useCurrentConfirmation from './useCurrentConfirmation';
 
 const ID_MOCK = '123-456';
@@ -35,7 +36,7 @@ const APPROVAL_MOCK = {
 
 const TRANSACTION_MOCK = {
   id: ID_MOCK,
-  chainId: mockState.metamask.providerConfig.chainId as Hex,
+  chainId: CHAIN_IDS.GOERLI,
   status: TransactionStatus.unapproved,
   type: TransactionType.contractInteraction,
 };
@@ -117,7 +118,9 @@ describe('useCurrentConfirmation', () => {
       redesignedConfirmationsEnabled: true,
     });
 
-    expect(currentConfirmation).toStrictEqual(MESSAGE_MOCK);
+    expect(currentConfirmation).toStrictEqual(
+      expect.objectContaining(MESSAGE_MOCK),
+    );
   });
 
   it('return transaction matching latest pending approval ID', () => {
@@ -143,7 +146,9 @@ describe('useCurrentConfirmation', () => {
       redesignedConfirmationsEnabled: true,
     });
 
-    expect(currentConfirmation).toStrictEqual(MESSAGE_MOCK);
+    expect(currentConfirmation).toStrictEqual(
+      expect.objectContaining(MESSAGE_MOCK),
+    );
   });
 
   it('returns transaction matching ID param', () => {
@@ -224,10 +229,12 @@ describe('useCurrentConfirmation', () => {
       redesignedConfirmationsEnabled: true,
     });
 
-    expect(currentConfirmation).toStrictEqual({
-      id: APPROVAL_MOCK.id,
-      msgParams: { siwe: { isSIWEMessage: true } },
-    });
+    expect(currentConfirmation).toStrictEqual(
+      expect.objectContaining({
+        id: APPROVAL_MOCK.id,
+        msgParams: { siwe: { isSIWEMessage: true } },
+      }),
+    );
   });
 
   it('returns undefined if developer and user settings are enabled and transaction has incorrect type', () => {

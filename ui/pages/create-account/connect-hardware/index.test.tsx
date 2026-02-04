@@ -7,14 +7,18 @@ import {
   LedgerTransportTypes,
   HardwareDeviceNames,
 } from '../../../../shared/constants/hardware-wallets';
+import { mockNetworkState } from '../../../../test/stub/networks';
+import { CHAIN_IDS } from '../../../../shared/constants/network';
 import ConnectHardwareForm from '.';
 
 const mockConnectHardware = jest.fn();
 const mockCheckHardwareStatus = jest.fn().mockResolvedValue(false);
+const mockGetgetDeviceNameForMetric = jest.fn().mockResolvedValue('ledger');
 
 jest.mock('../../../store/actions', () => ({
   connectHardware: () => mockConnectHardware,
   checkHardwareStatus: () => mockCheckHardwareStatus,
+  getDeviceNameForMetric: () => mockGetgetDeviceNameForMetric,
 }));
 
 jest.mock('../../../selectors', () => ({
@@ -26,6 +30,10 @@ jest.mock('../../../selectors', () => ({
   getMetaMaskAccounts: () => {
     return {};
   },
+}));
+
+jest.mock('../../../ducks/bridge/selectors', () => ({
+  getAllBridgeableNetworks: () => [],
 }));
 
 const MOCK_RECENT_PAGE = '/home';
@@ -53,9 +61,7 @@ const mockProps = {
 
 const mockState = {
   metamask: {
-    providerConfig: {
-      chainId: '0x1',
-    },
+    ...mockNetworkState({ chainId: CHAIN_IDS.MAINNET }),
   },
   appState: {
     networkDropdownOpen: false,

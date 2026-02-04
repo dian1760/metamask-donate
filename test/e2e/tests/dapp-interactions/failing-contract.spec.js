@@ -6,6 +6,7 @@ const {
   WINDOW_TITLES,
   generateGanacheOptions,
   clickNestedButton,
+  tempToggleSettingRedesignedTransactionConfirmations,
 } = require('../../helpers');
 const { SMART_CONTRACTS } = require('../../seeder/smart-contracts');
 const FixtureBuilder = require('../../fixture-builder');
@@ -29,6 +30,8 @@ describe('Failing contract interaction ', function () {
         );
         await unlockWallet(driver);
 
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
         await openDapp(driver, contractAddress);
         let windowHandles = await driver.getAllWindowHandles();
         const extension = windowHandles[0];
@@ -46,11 +49,13 @@ describe('Failing contract interaction ', function () {
         // display warning when transaction is expected to fail
         const warningText =
           'We were not able to estimate gas. There might be an error in the contract and this transaction may fail.';
-        const warning = await driver.findElement('.mm-banner-alert .mm-text');
+        await driver.waitForSelector({
+          css: '.mm-banner-alert .mm-text',
+          text: warningText,
+        });
         const confirmButton = await driver.findElement(
           '[data-testid="page-container-footer-next"]',
         );
-        assert.equal(await warning.getText(), warningText);
         assert.equal(await confirmButton.isEnabled(), false);
 
         // dismiss warning and confirm the transaction
@@ -91,6 +96,8 @@ describe('Failing contract interaction on non-EIP1559 network', function () {
         );
         await unlockWallet(driver);
 
+        await tempToggleSettingRedesignedTransactionConfirmations(driver);
+
         await openDapp(driver, contractAddress);
         let windowHandles = await driver.getAllWindowHandles();
         const extension = windowHandles[0];
@@ -113,11 +120,13 @@ describe('Failing contract interaction on non-EIP1559 network', function () {
         // display warning when transaction is expected to fail
         const warningText =
           'We were not able to estimate gas. There might be an error in the contract and this transaction may fail.';
-        const warning = await driver.findElement('.mm-banner-alert .mm-text');
+        await driver.waitForSelector({
+          css: '.mm-banner-alert .mm-text',
+          text: warningText,
+        });
         const confirmButton = await driver.findElement(
           '[data-testid="page-container-footer-next"]',
         );
-        assert.equal(await warning.getText(), warningText);
         assert.equal(await confirmButton.isEnabled(), false);
 
         // dismiss warning and confirm the transaction
